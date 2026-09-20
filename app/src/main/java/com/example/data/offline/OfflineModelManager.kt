@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -187,162 +188,209 @@ class OfflineModelManager(
             val targetFile = File(modelsDir, model.modelFile)
             val tempFile = File(modelsDir, "${model.modelFile}.tmp")
 
-            try {
-                dao.updateDownloadProgress(model.id, OfflineModelStatus.DOWNLOADING.name, 0L, null)
-                val initialBytes = if (tempFile.exists()) tempFile.length() else 0L
-                updateLiveProgress(
-                    model.copy(
-                        status = OfflineModelStatus.DOWNLOADING,
-                        downloadedBytes = initialBytes,
-                        downloadSpeed = "Connecting...",
-                        remainingTime = null
+            var totalRetries = 0
+            val maxRetries = 4
+            var downloadSucceeded = false
+            var finalErrorMessage: String? = null
+
+            dao.updateDownloadProgress(model.id, OfflineModelStatus.DOWNLOADING.name, 0L, null)
+
+            while (!downloadSucceeded && totalRetries < maxRetries) {
+                try {
+                    val initialBytes = if (tempFile.exists()) tempFile.length() else 0L
+                    updateLiveProgress(
+                        model.copy(
+                            status = OfflineModelStatus.DOWNLOADING,
+                            downloadedBytes = initialBytes,
+                            downloadSpeed = if (totalRetries > 0) "Reconnecting ($totalRetries/$maxRetries)..." else "Connecting...",
+                            remainingTime = null
+                        )
                     )
-                )
 
-                val hfToken = getHfToken()
-                var currentUrl = model.downloadUrl
-                var connection: HttpURLConnection? = null
-                var redirectCount = 0
-                val maxRedirects = 8
+                    val hfToken = getHfToken()
+                    var currentUrl = model.downloadUrl
+                    var connection: HttpURLConnection? = null
+                    var redirectCount = 0
+                    val maxRedirects = 10
 
-                // Follow redirects manually to handle cross-domain/CDN headers
-                while (redirectCount < maxRedirects) {
-                    val url = URL(currentUrl)
-                    val conn = url.openConnection() as HttpURLConnection
-                    conn.instanceFollowRedirects = false
-                    conn.connectTimeout = 45000
-                    conn.readTimeout = 60000
-                    conn.setRequestProperty("User-Agent", "AIEdgeGallery/1.0 (Android; Reso)")
+                    // Follow redirects manually to handle cross-domain/CDN headers
+                    while (redirectCount < maxRedirects) {
+                        val url = URL(currentUrl)
+                        val conn = url.openConnection() as HttpURLConnection
+                        conn.instanceFollowRedirects = false
+                        conn.connectTimeout = 30000
+                        conn.readTimeout = 45000
+                        conn.setRequestProperty("User-Agent", "AIEdgeGallery/1.0 (Android; Reso)")
 
-                    if (!hfToken.isNullOrBlank() && currentUrl.contains("huggingface.co")) {
-                        conn.setRequestProperty("Authorization", "Bearer $hfToken")
+                        val host = url.host.lowercase()
+                        val isHfDomain = host == "huggingface.co" || host.endsWith(".huggingface.co")
+                        if (!hfToken.isNullOrBlank() && isHfDomain) {
+                            val cleanToken = if (hfToken.startsWith("Bearer ", ignoreCase = true)) hfToken else "Bearer $hfToken"
+                            conn.setRequestProperty("Authorization", cleanToken)
+                        }
+
+                        val existingLength = if (tempFile.exists()) tempFile.length() else 0L
+                        if (existingLength > 0L) {
+                            conn.setRequestProperty("Range", "bytes=$existingLength-")
+                        }
+
+                        conn.connect()
+                        val code = conn.responseCode
+
+                        if (code in 300..399) {
+                            val location = conn.getHeaderField("Location")
+                            conn.disconnect()
+                            if (location != null) {
+                                currentUrl = if (location.startsWith("http://") || location.startsWith("https://")) {
+                                    location
+                                } else {
+                                    URL(url, location).toString()
+                                }
+                                redirectCount++
+                                continue
+                            }
+                        }
+
+                        connection = conn
+                        break
                     }
 
-                    val existingLength = if (tempFile.exists()) tempFile.length() else 0L
-                    if (existingLength > 0L) {
-                        conn.setRequestProperty("Range", "bytes=$existingLength-")
+                    val conn = connection ?: throw Exception("Failed to establish download connection")
+                    val responseCode = conn.responseCode
+
+                    if (responseCode == 401 || responseCode == 403) {
+                        finalErrorMessage = "Model requires Hugging Face Access Token. Please tap to enter your HF token."
+                        throw Exception(finalErrorMessage)
                     }
 
-                    conn.connect()
-                    val code = conn.responseCode
-
-                    if (code in 300..399) {
-                        val location = conn.getHeaderField("Location")
-                        conn.disconnect()
-                        if (location != null) {
-                            currentUrl = location
-                            redirectCount++
+                    if (responseCode == 416) {
+                        // Range not satisfiable -> temporary file may be already complete or corrupted
+                        if (tempFile.exists() && tempFile.length() > 0L) {
+                            tempFile.delete()
+                            totalRetries++
+                            delay(1000)
                             continue
                         }
                     }
 
-                    connection = conn
-                    break
-                }
-
-                val conn = connection ?: throw Exception("Failed to establish download connection")
-                val responseCode = conn.responseCode
-
-                if (responseCode == 401 || responseCode == 403) {
-                    throw Exception("Model requires Hugging Face Access Token. Please enter your HF token to download.")
-                }
-
-                if (responseCode != 200 && responseCode != 206) {
-                    if (responseCode == 416) {
-                        if (tempFile.exists()) tempFile.delete()
-                        throw Exception("Download resume error (416). Temporary file cleared, please retry.")
+                    if (responseCode != 200 && responseCode != 206) {
+                        throw Exception("Server returned HTTP $responseCode: ${conn.responseMessage}")
                     }
-                    throw Exception("Server returned HTTP $responseCode: ${conn.responseMessage}")
-                }
 
-                val isAppend = (responseCode == 206)
-                val contentLength = conn.contentLengthLong
-                val existingLength = if (isAppend && tempFile.exists()) tempFile.length() else 0L
-                val totalBytes = if (contentLength > 0L) {
-                    if (isAppend) existingLength + contentLength else contentLength
-                } else model.sizeInBytes
+                    val isAppend = (responseCode == 206)
+                    val contentLength = conn.contentLengthLong
+                    val existingLength = if (isAppend && tempFile.exists()) tempFile.length() else 0L
+                    val totalBytes = if (contentLength > 0L) {
+                        if (isAppend) existingLength + contentLength else contentLength
+                    } else if (model.sizeInBytes > 0L) model.sizeInBytes else 1000000000L
 
-                val inputStream = conn.inputStream
-                val outputStream = FileOutputStream(tempFile, isAppend)
+                    val inputStream = conn.inputStream
+                    val outputStream = FileOutputStream(tempFile, isAppend)
 
-                val buffer = ByteArray(64 * 1024)
-                var bytesRead: Int
-                var totalRead = existingLength
-                var lastUpdateTs = System.currentTimeMillis()
-                var bytesSinceLastUpdate = 0L
+                    val buffer = ByteArray(64 * 1024)
+                    var bytesRead: Int
+                    var totalRead = existingLength
+                    var lastUpdateTs = System.currentTimeMillis()
+                    var bytesSinceLastUpdate = 0L
 
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    totalRead += bytesRead
-                    bytesSinceLastUpdate += bytesRead
+                    try {
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            outputStream.write(buffer, 0, bytesRead)
+                            totalRead += bytesRead
+                            bytesSinceLastUpdate += bytesRead
 
-                    val now = System.currentTimeMillis()
-                    if (now - lastUpdateTs >= 350) {
-                        val timeDeltaSec = (now - lastUpdateTs) / 1000.0
-                        val speedBytesPerSec = if (timeDeltaSec > 0) bytesSinceLastUpdate / timeDeltaSec else 0.0
-                        val speedFormatted = String.format(java.util.Locale.US, "%.1f MB/s", speedBytesPerSec / (1024 * 1024))
+                            val now = System.currentTimeMillis()
+                            if (now - lastUpdateTs >= 400) {
+                                val timeDeltaSec = (now - lastUpdateTs) / 1000.0
+                                val speedBytesPerSec = if (timeDeltaSec > 0) bytesSinceLastUpdate / timeDeltaSec else 0.0
+                                val speedFormatted = String.format(java.util.Locale.US, "%.1f MB/s", speedBytesPerSec / (1024 * 1024))
 
-                        val remainingBytes = (totalBytes - totalRead).coerceAtLeast(0)
-                        val remainingSec = if (speedBytesPerSec > 0) (remainingBytes / speedBytesPerSec).toLong() else 0L
-                        val etaFormatted = if (remainingSec < 60) "${remainingSec}s" else "${remainingSec / 60}m ${remainingSec % 60}s"
+                                val remainingBytes = (totalBytes - totalRead).coerceAtLeast(0)
+                                val remainingSec = if (speedBytesPerSec > 0) (remainingBytes / speedBytesPerSec).toLong() else 0L
+                                val etaFormatted = if (remainingSec < 60) "${remainingSec}s" else "${remainingSec / 60}m ${remainingSec % 60}s"
 
-                        lastUpdateTs = now
-                        bytesSinceLastUpdate = 0L
+                                lastUpdateTs = now
+                                bytesSinceLastUpdate = 0L
 
-                        val updated = model.copy(
-                            status = OfflineModelStatus.DOWNLOADING,
-                            downloadedBytes = totalRead,
-                            sizeInBytes = totalBytes,
-                            downloadSpeed = speedFormatted,
-                            remainingTime = etaFormatted
+                                val updated = model.copy(
+                                    status = OfflineModelStatus.DOWNLOADING,
+                                    downloadedBytes = totalRead,
+                                    sizeInBytes = totalBytes,
+                                    downloadSpeed = speedFormatted,
+                                    remainingTime = etaFormatted
+                                )
+                                updateLiveProgress(updated)
+                            }
+                        }
+
+                        outputStream.flush()
+                        downloadSucceeded = true
+                    } finally {
+                        try { outputStream.close() } catch (_: Exception) {}
+                        try { inputStream.close() } catch (_: Exception) {}
+                        try { conn.disconnect() } catch (_: Exception) {}
+                    }
+
+                    if (downloadSucceeded) {
+                        if (!tempFile.exists() || tempFile.length() == 0L) {
+                            throw Exception("Downloaded file is empty")
+                        }
+
+                        // Atomically rename temp file to target
+                        if (targetFile.exists()) targetFile.delete()
+                        val renamed = tempFile.renameTo(targetFile)
+                        if (!renamed) {
+                            tempFile.copyTo(targetFile, overwrite = true)
+                            tempFile.delete()
+                        }
+
+                        val finalSize = targetFile.length()
+                        val finalModel = model.copy(
+                            status = OfflineModelStatus.DOWNLOADED,
+                            downloadedBytes = finalSize,
+                            sizeInBytes = finalSize,
+                            filePath = targetFile.absolutePath,
+                            downloadSpeed = null,
+                            remainingTime = null,
+                            lastError = null
                         )
-                        updateLiveProgress(updated)
+                        dao.updateDownloadProgress(model.id, OfflineModelStatus.DOWNLOADED.name, finalSize, targetFile.absolutePath)
+                        updateLiveProgress(finalModel)
+                        Log.i(TAG, "Successfully downloaded ${model.name} (${finalSize} bytes) -> ${targetFile.absolutePath}")
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Download attempt ${totalRetries + 1} for ${model.name} interrupted: ${e.message}")
+                    if (e.message?.contains("Hugging Face Access Token", ignoreCase = true) == true) {
+                        // Auth failure should stop retry loop immediately
+                        finalErrorMessage = e.message
+                        break
+                    }
+                    totalRetries++
+                    if (totalRetries < maxRetries) {
+                        delay(1500L * totalRetries)
+                    } else {
+                        finalErrorMessage = e.message ?: "Connection aborted during download"
                     }
                 }
+            }
 
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-                conn.disconnect()
-
-                if (!tempFile.exists() || tempFile.length() == 0L) {
-                    throw Exception("Downloaded file is empty")
-                }
-
-                // Atomically rename temp file to target
-                if (targetFile.exists()) targetFile.delete()
-                val renamed = tempFile.renameTo(targetFile)
-                if (!renamed) {
-                    tempFile.copyTo(targetFile, overwrite = true)
-                    tempFile.delete()
-                }
-
-                val finalSize = targetFile.length()
-                val finalModel = model.copy(
-                    status = OfflineModelStatus.DOWNLOADED,
-                    downloadedBytes = finalSize,
-                    sizeInBytes = finalSize,
-                    filePath = targetFile.absolutePath,
-                    downloadSpeed = null,
-                    remainingTime = null
-                )
-                dao.updateDownloadProgress(model.id, OfflineModelStatus.DOWNLOADED.name, finalSize, targetFile.absolutePath)
-                updateLiveProgress(finalModel)
-                Log.i(TAG, "Successfully downloaded ${model.name} (${finalSize} bytes) -> ${targetFile.absolutePath}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to download model ${model.name}", e)
-                dao.updateDownloadProgress(model.id, OfflineModelStatus.FAILED.name, 0L, null)
+            if (!downloadSucceeded) {
+                val errorMsg = finalErrorMessage ?: "Download failed"
+                Log.e(TAG, "Failed to download model ${model.name}: $errorMsg")
+                val existingBytes = if (tempFile.exists()) tempFile.length() else 0L
+                dao.updateDownloadProgress(model.id, OfflineModelStatus.FAILED.name, existingBytes, null)
                 updateLiveProgress(
                     model.copy(
                         status = OfflineModelStatus.FAILED,
+                        downloadedBytes = existingBytes,
                         downloadSpeed = null,
                         remainingTime = null,
-                        lastError = e.message ?: "Download failed"
+                        lastError = errorMsg
                     )
                 )
-            } finally {
-                activeDownloadJobs.remove(model.id)
             }
+
+            activeDownloadJobs.remove(model.id)
         }
         activeDownloadJobs[model.id] = job
     }
@@ -355,6 +403,19 @@ class OfflineModelManager(
             val currentMap = _downloadProgress.value.toMutableMap()
             currentMap.remove(modelId)
             _downloadProgress.value = currentMap
+        }
+    }
+
+    fun pauseDownload(modelId: String) {
+        cancelDownload(modelId)
+    }
+
+    fun deleteModel(modelId: String) {
+        applicationScope.launch {
+            val entity = dao.getModelById(modelId)
+            if (entity != null) {
+                deleteModel(entity.toDomain())
+            }
         }
     }
 

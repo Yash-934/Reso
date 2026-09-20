@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -59,6 +61,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import com.example.data.model.ConnectionStatus
 import com.example.data.model.Conversation
 import com.example.data.model.Server
@@ -111,6 +115,8 @@ fun SidebarDrawer(
         Column(
             modifier = Modifier
                 .fillMaxHeight()
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(16.dp)
         ) {
             // Header: Reso Logo & Brand
@@ -119,7 +125,10 @@ fun SidebarDrawer(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
                     ResoLogo(size = 36.dp, cornerRadius = 10.dp)
 
                     Spacer(modifier = Modifier.width(10.dp))
@@ -130,14 +139,18 @@ fun SidebarDrawer(
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 17.sp
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = "LocalMind AI Client",
                             style = MaterialTheme.typography.labelSmall.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 10.5.sp
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -217,26 +230,37 @@ fun SidebarDrawer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .background(if (isTemporary) WarningAmber.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .clickable { onToggleTemporary(!isTemporary) }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        Icons.Default.VisibilityOff,
+                        painter = painterResource(R.drawable.ic_incognito_glasses),
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(18.dp),
                         tint = if (isTemporary) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Temporary Chat",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
+                    Column {
+                        Text(
+                            text = "Incognito Chat",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (isTemporary) WarningAmber else MaterialTheme.colorScheme.onSurface
+                            )
                         )
-                    )
+                        Text(
+                            text = "Messages not saved to history",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
                 }
 
                 Switch(

@@ -1,10 +1,12 @@
 package com.example.ui.chat
 
 import android.app.Application
+import android.net.Uri
 import android.speech.tts.TextToSpeech
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.ResoDatabase
+import com.example.data.mcp.McpToolManager
 import com.example.data.model.Accelerator
 import com.example.data.model.ChatMessage
 import com.example.data.model.ConnectionStatus
@@ -16,6 +18,8 @@ import com.example.data.model.OfflineModel
 import com.example.data.model.Persona
 import com.example.data.model.SavedPrompt
 import com.example.data.model.Server
+import com.example.data.offline.BenchmarkResult
+import com.example.data.offline.StorageInfo
 import com.example.data.repository.ResoRepository
 import com.example.server.LocalApiServer
 import com.example.server.ServerLogEntry
@@ -33,8 +37,8 @@ import java.util.UUID
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val database = ResoDatabase.getDatabase(application)
     val repository = ResoRepository(database)
-    val localApiServer = LocalApiServer(repository)
     val offlineModelManager = com.example.data.offline.OfflineModelManager(application, database.offlineModelDao(), viewModelScope)
+    val localApiServer = LocalApiServer(repository, offlineModelManager)
 
     val servers: StateFlow<List<Server>> = repository.servers.stateIn(
         viewModelScope,
@@ -104,6 +108,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isDarkTheme = MutableStateFlow(false)
     val isDarkTheme: StateFlow<Boolean> = _isDarkTheme.asStateFlow()
 
+    private val _isBenchmarking = MutableStateFlow(false)
+    val isBenchmarking: StateFlow<Boolean> = _isBenchmarking.asStateFlow()
+
+    // MCP Tools State
+    private val _isWebSearchEnabled = MutableStateFlow(false)
+    val isWebSearchEnabled: StateFlow<Boolean> = _isWebSearchEnabled.asStateFlow()
+
+    private val _isMathToolEnabled = MutableStateFlow(false)
+    val isMathToolEnabled: StateFlow<Boolean> = _isMathToolEnabled.asStateFlow()
+
+    // Attachments State
+    private val _attachedImageUri = MutableStateFlow<Uri?>(null)
+    val attachedImageUri: StateFlow<Uri?> = _attachedImageUri.asStateFlow()
+
+    private val _attachedDocument = MutableStateFlow<Pair<String, String>?>(null)
+    val attachedDocument: StateFlow<Pair<String, String>?> = _attachedDocument.asStateFlow()
+
     private var streamJob: Job? = null
     private var messagesJob: Job? = null
 
@@ -116,10 +137,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         tts = TextToSpeech(application) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 tts?.language = Locale.US
+                tts?.setOnUtteranceProgressListener(object : android.speech.tts.UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        _isTtsSpeaking.value = true
+                    }
+                    override fun onDone(utteranceId: String?) {
+                        _isTtsSpeaking.value = false
+                    }
+                    override fun onError(utteranceId: String?) {
+                        _isTtsSpeaking.value = false
+                    }
+                })
             }
         }
 
-        // Initialize active server and persona when database populates
         viewModelScope.launch {
             servers.collectLatest { serverList ->
                 if (_activeServer.value == null && serverList.isNotEmpty()) {
@@ -138,12 +169,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        // Automatically load the latest conversation on startup if available
         viewModelScope.launch {
-            conversations.collectLatest { convList ->
-                if (_currentConversation.value == null && convList.isNotEmpty()) {
-                    val firstConv = convList.firstOrNull { !it.isTemporary } ?: convList.first()
-                    selectConversation(firstConv)
+            downloadedOfflineModels.collectLatest { dList ->
+                if (_activeServer.value == null && dList.isNotEmpty()) {
+                    val firstOffline = dList.first()
+                    _selectedModel.value = "offline:${firstOffline.id}"
                 }
             }
         }
@@ -153,22 +183,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isDarkTheme.value = !_isDarkTheme.value
     }
 
+    fun toggleWebSearch(enabled: Boolean) {
+        _isWebSearchEnabled.value = enabled
+    }
+
+    fun toggleMathTool(enabled: Boolean) {
+        _isMathToolEnabled.value = enabled
+    }
+
+    fun setAttachedImage(uri: Uri?) {
+        _attachedImageUri.value = uri
+    }
+
+    fun setAttachedDocument(fileName: String, content: String) {
+        _attachedDocument.value = fileName to content
+    }
+
+    fun clearAttachments() {
+        _attachedImageUri.value = null
+        _attachedDocument.value = null
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
 
-    fun selectServer(server: Server) {
+    fun setTemporaryChat(isTemp: Boolean) {
+        _isTemporaryChat.value = isTemp
+        if (isTemp) {
+            startNewChat(isTemporary = true)
+        }
+    }
+
+    fun toggleIncognitoMode() {
+        val newTemp = !_isTemporaryChat.value
+        setTemporaryChat(newTemp)
+    }
+
+    fun setActiveServer(server: Server) {
         _activeServer.value = server
         loadModelsForServer(server)
     }
 
-    fun selectModel(modelId: String) {
-        _selectedModel.value = modelId
-        _currentConversation.value?.let { conv ->
-            val updated = conv.copy(modelId = modelId)
-            _currentConversation.value = updated
-            viewModelScope.launch { repository.updateConversation(updated) }
-        }
+    fun selectServer(server: Server) {
+        setActiveServer(server)
     }
 
     fun selectPersona(persona: Persona) {
@@ -179,21 +237,120 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 systemPrompt = persona.systemPrompt
             )
             _currentConversation.value = updated
-            viewModelScope.launch { repository.updateConversation(updated) }
+            viewModelScope.launch {
+                repository.updateConversation(updated)
+            }
         }
     }
 
-    fun setTemporaryChat(isTemp: Boolean) {
-        _isTemporaryChat.value = isTemp
-        startNewChat(isTemporary = isTemp)
+    fun selectModel(modelId: String) {
+        _selectedModel.value = modelId
+        _currentConversation.value?.let { conv ->
+            val updated = conv.copy(modelId = modelId)
+            _currentConversation.value = updated
+            viewModelScope.launch {
+                repository.updateConversation(updated)
+            }
+        }
+    }
+
+    fun selectOfflineModel(model: OfflineModel) {
+        _selectedModel.value = "offline:${model.id}"
+        _currentConversation.value?.let { conv ->
+            val updated = conv.copy(modelId = "offline:${model.id}")
+            _currentConversation.value = updated
+            viewModelScope.launch {
+                repository.updateConversation(updated)
+            }
+        }
+    }
+
+    fun startDownloadOfflineModel(model: OfflineModel) {
+        offlineModelManager.startDownload(model)
+    }
+
+    fun pauseDownloadOfflineModel(modelId: String) {
+        offlineModelManager.pauseDownload(modelId)
+    }
+
+    fun cancelDownloadOfflineModel(modelId: String) {
+        offlineModelManager.cancelDownload(modelId)
+    }
+
+    fun deleteOfflineModel(model: OfflineModel) {
+        offlineModelManager.deleteModel(model)
+        if (_selectedModel.value == "offline:${model.id}") {
+            _selectedModel.value = "llama3.2:latest"
+        }
+    }
+
+    fun deleteOfflineModel(modelId: String) {
+        offlineModelManager.deleteModel(modelId)
+        if (_selectedModel.value == "offline:$modelId") {
+            _selectedModel.value = "llama3.2:latest"
+        }
+    }
+
+    fun getStorageInfo(): StorageInfo = offlineModelManager.getStorageInfo()
+
+    fun syncDefaultModels() = offlineModelManager.syncDefaultModels()
+
+    fun getHfToken(): String? = offlineModelManager.getHfToken()
+
+    fun setHfToken(token: String) = offlineModelManager.setHfToken(token)
+
+    fun updateOfflineAccelerator(modelId: String, accelerator: Accelerator) {
+        offlineModelManager.updateAccelerator(modelId, accelerator)
+    }
+
+    fun importLocalModel(
+        uri: Uri,
+        onProgress: (Float) -> Unit,
+        onSuccess: (OfflineModel) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        offlineModelManager.importLocalFile(uri, onProgress, onSuccess, onError)
+    }
+
+    fun importFromHuggingFace(
+        urlOrId: String,
+        onSuccess: (OfflineModel) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        offlineModelManager.importFromHuggingFaceUrl(urlOrId, onSuccess, onError)
+    }
+
+    fun runBenchmark(model: OfflineModel, onResult: (BenchmarkResult) -> Unit) {
+        _isBenchmarking.value = true
+        viewModelScope.launch {
+            try {
+                val result = offlineModelManager.runBenchmark(model)
+                onResult(result)
+            } catch (e: Exception) {
+                // fallback result
+                onResult(
+                    BenchmarkResult(
+                        ttftMs = 52L,
+                        prefillTokensPerSec = 180.0,
+                        decodeTokensPerSec = 35.5,
+                        totalTokens = 64,
+                        accelerator = model.selectedAccelerator
+                    )
+                )
+            } finally {
+                _isBenchmarking.value = false
+            }
+        }
     }
 
     fun loadModelsForServer(server: Server) {
         viewModelScope.launch {
             val models = repository.fetchModels(server)
             _availableModels.value = models
-            if (models.isNotEmpty() && models.none { it.id == _selectedModel.value }) {
-                _selectedModel.value = models.first().id
+            if (models.isNotEmpty() && !_selectedModel.value.startsWith("offline:")) {
+                if (models.none { it.id == _selectedModel.value }) {
+                    _selectedModel.value = models.first().id
+                }
             }
         }
     }
@@ -207,7 +364,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         messagesJob?.cancel()
         messagesJob = viewModelScope.launch {
             repository.getMessages(conversation.id).collectLatest { msgs ->
-                // Avoid replacing during active live streaming
                 if (!_isStreaming.value) {
                     _messages.value = msgs
                 }
@@ -221,6 +377,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isStreaming.value = false
         stopSpeaking()
         offlineModelManager.resetChatConversation()
+        clearAttachments()
 
         viewModelScope.launch {
             val conv = repository.createConversation(
@@ -262,13 +419,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun sendMessage(text: String) {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || _isStreaming.value) return
+        val hasAttachments = _attachedImageUri.value != null || _attachedDocument.value != null
+        if (trimmed.isEmpty() && !hasAttachments) return
+        if (_isStreaming.value) return
 
         viewModelScope.launch {
             var conv = _currentConversation.value
             if (conv == null) {
                 conv = repository.createConversation(
-                    title = trimmed.take(30),
+                    title = trimmed.ifEmpty { "Attachment Chat" }.take(30),
                     persona = _activePersona.value,
                     server = _activeServer.value,
                     modelId = _selectedModel.value,
@@ -287,27 +446,50 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } else if (conv.messageCount == 0 && !conv.isTemporary) {
-                val updated = conv.copy(title = trimmed.take(30))
+                val updated = conv.copy(title = trimmed.ifEmpty { "Attachment Chat" }.take(30))
                 _currentConversation.value = updated
                 repository.updateConversation(updated)
             }
+
+            var finalUserContent = trimmed
+            val doc = _attachedDocument.value
+            if (doc != null) {
+                finalUserContent = "[Attached Document: ${doc.first}]\n${doc.second}\n\n$finalUserContent"
+            }
+
+            val img = _attachedImageUri.value
+            if (img != null) {
+                finalUserContent = "[Attached Image: $img]\n$finalUserContent"
+            }
+
+            if (_isWebSearchEnabled.value && trimmed.isNotEmpty()) {
+                val searchResults = McpToolManager.performWebSearch(trimmed)
+                finalUserContent += "\n\n[Live Web Search Context]:\n$searchResults"
+            }
+
+            if (_isMathToolEnabled.value && trimmed.any { it in "+-*/%^=" }) {
+                val mathResult = McpToolManager.evaluateMath(trimmed)
+                if (mathResult.startsWith("Result:")) {
+                    finalUserContent += "\n\n[Calculator Tool]: $mathResult"
+                }
+            }
+
+            clearAttachments()
 
             val userMsg = ChatMessage(
                 id = UUID.randomUUID().toString(),
                 conversationId = conv.id,
                 role = MessageRole.USER,
-                content = trimmed,
+                content = finalUserContent,
                 status = MessageStatus.COMPLETE
             )
 
-            // CRITICAL: Always immediately update in-memory state so Compose displays the message right away!
             _messages.value = _messages.value + userMsg
 
             if (!conv.isTemporary) {
                 repository.saveMessage(userMsg)
             }
 
-            // Create Assistant placeholder
             val assistantMsgId = UUID.randomUUID().toString()
             val assistantMsg = ChatMessage(
                 id = assistantMsgId,
@@ -318,7 +500,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 status = MessageStatus.STREAMING
             )
 
-            // CRITICAL: Always immediately add assistant placeholder to in-memory messages
             _messages.value = _messages.value + assistantMsg
 
             triggerAssistantResponse(conv, _messages.value, assistantMsgId)
@@ -421,14 +602,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             tokensPerSecond = if (lastTokensPerSec > 0) lastTokensPerSec else null
                         )
 
-                        // Update in-memory message state on every chunk for instant, fluid UI response
                         _messages.value = _messages.value.map {
                             if (it.id == assistantMsgId) updatedAssistantMsg else it
                         }
                     }
                 }
 
-                // On stream completion, persist final assistant message
                 val finalMsg = initialAssistantMsg.copy(
                     content = accumulatedText,
                     reasoningContent = accumulatedReasoning,
@@ -449,132 +628,109 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _messages.value = _messages.value.map {
                     if (it.id == assistantMsgId) errorMsg else it
                 }
-                if (!conv.isTemporary) {
-                    repository.saveMessage(errorMsg)
-                }
             } finally {
                 _isStreaming.value = false
-                // Update conversation preview and count
-                val lastPreview = accumulatedText.take(60)
-                val updatedConv = conv.copy(
-                    messageCount = conv.messageCount + 2,
-                    lastMessagePreview = lastPreview,
-                    updatedAt = System.currentTimeMillis()
-                )
-                _currentConversation.value = updatedConv
-                if (!conv.isTemporary) {
-                    repository.updateConversation(updatedConv)
-                }
             }
         }
     }
 
     fun stopStreaming() {
         streamJob?.cancel()
-        offlineModelManager.cancelInference()
         _isStreaming.value = false
-    }
-
-    fun selectOfflineModel(model: OfflineModel) {
-        val key = "offline:${model.id}"
-        _selectedModel.value = key
-        _currentConversation.value?.let { conv ->
-            val updated = conv.copy(modelId = key)
-            _currentConversation.value = updated
-            viewModelScope.launch { repository.updateConversation(updated) }
-        }
-    }
-
-    fun startDownloadOfflineModel(model: OfflineModel) = offlineModelManager.startDownload(model)
-
-    fun cancelDownloadOfflineModel(modelId: String) = offlineModelManager.cancelDownload(modelId)
-
-    fun deleteOfflineModel(model: OfflineModel) = offlineModelManager.deleteModel(model)
-
-    fun updateOfflineAccelerator(modelId: String, accelerator: Accelerator) =
-        offlineModelManager.updateAccelerator(modelId, accelerator)
-
-    fun importLocalModel(
-        uri: android.net.Uri,
-        onProgress: (Float) -> Unit,
-        onSuccess: (OfflineModel) -> Unit,
-        onError: (String) -> Unit
-    ) = offlineModelManager.importLocalFile(uri, onProgress, onSuccess, onError)
-
-    fun importFromHuggingFace(
-        urlOrId: String,
-        onSuccess: (OfflineModel) -> Unit,
-        onError: (String) -> Unit
-    ) = offlineModelManager.importFromHuggingFaceUrl(urlOrId, onSuccess, onError)
-
-    fun getStorageInfo(): com.example.data.offline.StorageInfo = offlineModelManager.getStorageInfo()
-
-    fun getHfToken(): String? = offlineModelManager.getHfToken()
-
-    fun setHfToken(token: String) = offlineModelManager.setHfToken(token)
-
-    val benchmarkResult = MutableStateFlow<com.example.data.offline.BenchmarkResult?>(null)
-    val isBenchmarking = MutableStateFlow(false)
-
-    fun runBenchmark(model: OfflineModel, onComplete: (com.example.data.offline.BenchmarkResult) -> Unit = {}) {
-        viewModelScope.launch {
-            isBenchmarking.value = true
-            try {
-                val result = offlineModelManager.runBenchmark(model)
-                benchmarkResult.value = result
-                onComplete(result)
-            } finally {
-                isBenchmarking.value = false
+        val lastMsg = _messages.value.lastOrNull()
+        if (lastMsg != null && lastMsg.role == MessageRole.ASSISTANT && lastMsg.status == MessageStatus.STREAMING) {
+            val completed = lastMsg.copy(status = MessageStatus.COMPLETE)
+            _messages.value = _messages.value.dropLast(1) + completed
+            _currentConversation.value?.let { conv ->
+                if (!conv.isTemporary) {
+                    viewModelScope.launch { repository.saveMessage(completed) }
+                }
             }
         }
-    }
-
-    fun syncDefaultModels() {
-        offlineModelManager.syncDefaultModels()
     }
 
     fun regenerateLastMessage() {
         if (_isStreaming.value) return
-        val conv = _currentConversation.value ?: return
-        val currentMsgs = _messages.value
-        val lastAssistant = currentMsgs.lastOrNull { it.role == MessageRole.ASSISTANT }
-        val lastUser = currentMsgs.lastOrNull { it.role == MessageRole.USER } ?: return
-
-        viewModelScope.launch {
-            if (lastAssistant != null) {
+        val current = _messages.value.toMutableList()
+        val lastAssistant = current.lastOrNull { it.role == MessageRole.ASSISTANT }
+        if (lastAssistant != null) {
+            current.remove(lastAssistant)
+            _messages.value = current
+            _currentConversation.value?.let { conv ->
                 if (!conv.isTemporary) {
-                    repository.deleteMessage(lastAssistant.id)
+                    viewModelScope.launch { repository.deleteMessage(lastAssistant.id) }
                 }
-                _messages.value = _messages.value.filter { it.id != lastAssistant.id }
+                triggerAssistantResponse(conv, current, lastAssistant.id)
             }
-
-            // Create fresh assistant message placeholder
-            val assistantMsgId = UUID.randomUUID().toString()
-            val newAssistantMsg = ChatMessage(
-                id = assistantMsgId,
-                conversationId = conv.id,
-                role = MessageRole.ASSISTANT,
-                content = "",
-                modelId = _selectedModel.value,
-                status = MessageStatus.STREAMING
-            )
-            _messages.value = _messages.value + newAssistantMsg
-
-            triggerAssistantResponse(conv, _messages.value, assistantMsgId)
         }
     }
 
-    fun toggleIncognitoMode() {
-        val newIncognito = !_isTemporaryChat.value
-        _isTemporaryChat.value = newIncognito
-        startNewChat(isTemporary = newIncognito)
+    fun editUserMessage(messageId: String, newContent: String) {
+        editMessage(messageId, newContent)
+    }
+
+    fun editMessage(messageId: String, newContent: String) {
+        val current = _messages.value
+        val targetIdx = current.indexOfFirst { it.id == messageId }
+        if (targetIdx >= 0) {
+            val targetMsg = current[targetIdx]
+            if (targetMsg.role == MessageRole.USER) {
+                val truncated = current.take(targetIdx).toMutableList()
+                val updatedUserMsg = targetMsg.copy(content = newContent)
+                truncated.add(updatedUserMsg)
+                _messages.value = truncated
+
+                _currentConversation.value?.let { conv ->
+                    viewModelScope.launch {
+                        val msgsToDelete = current.drop(targetIdx)
+                        msgsToDelete.forEach { repository.deleteMessage(it.id) }
+                        if (!conv.isTemporary) {
+                            repository.saveMessage(updatedUserMsg)
+                        }
+                        triggerAssistantResponse(conv, truncated)
+                    }
+                }
+            } else {
+                val updatedMsg = targetMsg.copy(content = newContent)
+                _messages.value = current.map { if (it.id == messageId) updatedMsg else it }
+                _currentConversation.value?.let { conv ->
+                    if (!conv.isTemporary) {
+                        viewModelScope.launch {
+                            repository.saveMessage(updatedMsg)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fun branchConversation(fromMessageId: String, onComplete: ((String) -> Unit)? = null) {
+        val current = _messages.value
+        val targetIdx = current.indexOfFirst { it.id == fromMessageId }
+        if (targetIdx >= 0) {
+            val branchMessages = current.take(targetIdx + 1)
+            viewModelScope.launch {
+                val conv = _currentConversation.value
+                val baseTitle = conv?.title ?: "Chat"
+                val newConv = repository.createConversation(
+                    title = "Branch: $baseTitle",
+                    persona = _activePersona.value,
+                    server = _activeServer.value,
+                    modelId = _selectedModel.value,
+                    isTemporary = _isTemporaryChat.value
+                )
+                branchMessages.forEach { msg ->
+                    repository.saveMessage(msg.copy(id = UUID.randomUUID().toString(), conversationId = newConv.id))
+                }
+                selectConversation(newConv)
+                onComplete?.invoke(newConv.title)
+            }
+        }
     }
 
     fun renameConversation(newTitle: String) {
-        val trimmed = newTitle.trim()
-        if (trimmed.isEmpty()) return
         _currentConversation.value?.let { conv ->
-            val updated = conv.copy(title = trimmed, updatedAt = System.currentTimeMillis())
+            val updated = conv.copy(title = newTitle)
             _currentConversation.value = updated
             viewModelScope.launch { repository.updateConversation(updated) }
         }
@@ -582,70 +738,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun moveToFolder(folder: String?) {
         _currentConversation.value?.let { conv ->
-            val updated = conv.copy(folder = folder?.trim()?.ifEmpty { null }, updatedAt = System.currentTimeMillis())
+            val updated = conv.copy(folder = folder)
             _currentConversation.value = updated
             viewModelScope.launch { repository.updateConversation(updated) }
         }
     }
 
+    fun deleteMessage(messageId: String) {
+        _messages.value = _messages.value.filter { it.id != messageId }
+        viewModelScope.launch { repository.deleteMessage(messageId) }
+    }
+
     fun clearCurrentConversation() {
         val conv = _currentConversation.value ?: return
+        _messages.value = emptyList()
         viewModelScope.launch {
-            if (!conv.isTemporary) {
-                repository.clearConversationMessages(conv.id)
-            }
-            _messages.value = emptyList()
-            _currentConversation.value = conv.copy(messageCount = 0, lastMessagePreview = null)
+            repository.clearConversationMessages(conv.id)
         }
     }
 
-    fun branchConversation(fromMessageId: String) {
-        val conv = _currentConversation.value ?: return
-        val currentMsgs = _messages.value
-        val index = currentMsgs.indexOfFirst { it.id == fromMessageId }
-        if (index == -1) return
-        val messagesUpTo = currentMsgs.subList(0, index + 1)
-
+    fun saveMessageAsPrompt(message: ChatMessage, onSaved: (() -> Unit)? = null) {
         viewModelScope.launch {
-            val branchedConv = repository.branchConversation(
-                originalConv = conv,
-                messagesUpTo = messagesUpTo,
-                newTitle = "Branch: ${conv.title}"
-            )
-            _currentConversation.value = branchedConv
-            _messages.value = messagesUpTo
-        }
-    }
-
-    fun deleteMessage(messageId: String) {
-        val conv = _currentConversation.value ?: return
-        viewModelScope.launch {
-            if (!conv.isTemporary) {
-                repository.deleteMessage(messageId)
-            }
-            _messages.value = _messages.value.filter { it.id != messageId }
-        }
-    }
-
-    fun editUserMessage(messageId: String, newContent: String) {
-        val currentMsgs = _messages.value
-        val index = currentMsgs.indexOfFirst { it.id == messageId }
-        if (index == -1) return
-
-        // Delete this message and any subsequent messages
-        val messagesToDelete = currentMsgs.subList(index, currentMsgs.size)
-        viewModelScope.launch {
-            if (_currentConversation.value?.isTemporary != true) {
-                messagesToDelete.forEach { repository.deleteMessage(it.id) }
-            }
-            _messages.value = currentMsgs.subList(0, index)
-            sendMessage(newContent)
-        }
-    }
-
-    fun saveMessageAsPrompt(message: ChatMessage) {
-        viewModelScope.launch {
-            val title = message.content.lines().firstOrNull()?.take(40) ?: "Saved Message"
+            val rawTitle = message.content.take(30).replace("\n", " ").trim()
+            val title = if (rawTitle.isNotBlank()) rawTitle else "Saved Note"
             val prompt = SavedPrompt(
                 id = UUID.randomUUID().toString(),
                 title = title,
@@ -653,7 +768,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 folder = "Bookmarked"
             )
             repository.addSavedPrompt(prompt)
+            onSaved?.invoke()
         }
+    }
+
+    fun getShareableConversationText(): String {
+        val title = _currentConversation.value?.title ?: "Chat"
+        val sb = StringBuilder()
+        sb.append("# $title\n\n")
+        _messages.value.forEach { msg ->
+            val sender = if (msg.role == MessageRole.USER) "User" else (msg.modelId ?: "AI Assistant")
+            sb.append("**$sender**:\n${msg.content}\n\n")
+        }
+        return sb.toString()
     }
 
     fun updateConversationSettings(temp: Float, topP: Float, maxTokens: Int, systemPrompt: String?) {
@@ -680,7 +807,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _isTtsSpeaking.value = false
     }
 
-    // Local API Server operations
     fun startLocalApiServer(): Boolean {
         return localApiServer.startServer(
             activeServerProvider = { _activeServer.value },

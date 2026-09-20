@@ -238,7 +238,10 @@ fun ChatMessageItem(
 
                 // Bookmark / Save
                 IconButton(
-                    onClick = onBookmark,
+                    onClick = {
+                        onBookmark()
+                        Toast.makeText(context, "Saved to Bookmarks / Prompts", Toast.LENGTH_SHORT).show()
+                    },
                     modifier = Modifier.size(30.dp)
                 ) {
                     Icon(
@@ -266,7 +269,10 @@ fun ChatMessageItem(
 
                 // Branch chat (>)
                 IconButton(
-                    onClick = onBranch,
+                    onClick = {
+                        onBranch()
+                        Toast.makeText(context, "Branched into new conversation", Toast.LENGTH_SHORT).show()
+                    },
                     modifier = Modifier.size(30.dp)
                 ) {
                     Icon(
@@ -292,7 +298,10 @@ fun ChatMessageItem(
 
                 // Delete (🗑 in red #E53935)
                 IconButton(
-                    onClick = onDelete,
+                    onClick = {
+                        onDelete()
+                        Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
+                    },
                     modifier = Modifier.size(30.dp)
                 ) {
                     Icon(
@@ -353,10 +362,11 @@ fun ChatMessageItem(
         }
     }
 
-    // Message Options Bottom Sheet (Screenshot 3)
+    // Message Options Bottom Sheet
     if (showOptionsSheet) {
         MessageOptionsBottomSheet(
             message = message,
+            isSpeakingThis = isSpeakingThis,
             onDismiss = { showOptionsSheet = false },
             onCopyMarkdown = {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -366,6 +376,7 @@ fun ChatMessageItem(
             onSelectText = {
                 showTextSelectionDialog = true
             },
+            onEditMessage = onEdit,
             onReadAloud = {
                 if (isSpeakingThis) onStopSpeak() else onSpeak(message.content)
             },
@@ -376,8 +387,19 @@ fun ChatMessageItem(
                 }
                 context.startActivity(Intent.createChooser(shareIntent, "Share Message"))
             },
-            onBranch = onBranch,
-            onSaveMessage = onBookmark
+            onBranch = {
+                onBranch()
+                Toast.makeText(context, "Branched into new conversation", Toast.LENGTH_SHORT).show()
+            },
+            onSaveMessage = {
+                onBookmark()
+                Toast.makeText(context, "Saved to Bookmarks / Prompts", Toast.LENGTH_SHORT).show()
+            },
+            onRegenerate = if (!isUser) onRegenerate else null,
+            onDeleteMessage = {
+                onDelete()
+                Toast.makeText(context, "Message deleted", Toast.LENGTH_SHORT).show()
+            }
         )
     }
 

@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ModelInfo
@@ -192,12 +193,18 @@ fun ModelPickerSheet(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
                                             Text(
                                                 text = model.name,
                                                 style = MaterialTheme.typography.bodyMedium.copy(
                                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold
-                                                )
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f, fill = false)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Box(
@@ -210,7 +217,8 @@ fun ModelPickerSheet(
                                                     model.selectedAccelerator.label,
                                                     fontSize = 9.5.sp,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    maxLines = 1
                                                 )
                                             }
 
@@ -226,7 +234,8 @@ fun ModelPickerSheet(
                                                         "Think",
                                                         fontSize = 9.5.sp,
                                                         color = ReasoningPurple,
-                                                        fontWeight = FontWeight.Bold
+                                                        fontWeight = FontWeight.Bold,
+                                                        maxLines = 1
                                                     )
                                                 }
                                             }
@@ -238,7 +247,9 @@ fun ModelPickerSheet(
                                             style = MaterialTheme.typography.bodySmall.copy(
                                                 fontSize = 11.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
 
@@ -332,12 +343,18 @@ fun ModelPickerSheet(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
                                         Text(
                                             text = model.name,
                                             style = MaterialTheme.typography.bodyMedium.copy(
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                            )
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f, fill = false)
                                         )
 
                                         if (model.isReasoningModel) {
@@ -360,7 +377,8 @@ fun ModelPickerSheet(
                                                         "Reasoning",
                                                         fontSize = 10.sp,
                                                         color = ReasoningPurple,
-                                                        fontWeight = FontWeight.SemiBold
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        maxLines = 1
                                                     )
                                                 }
                                             }
@@ -368,12 +386,15 @@ fun ModelPickerSheet(
                                     }
 
                                     if (!model.description.isNullOrEmpty()) {
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
                                             text = model.description,
                                             style = MaterialTheme.typography.bodySmall.copy(
                                                 fontSize = 11.5.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
+                                            ),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }

@@ -18,8 +18,12 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CallSplit
 import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -32,26 +36,33 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ChatMessage
+import com.example.data.model.MessageRole
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageOptionsBottomSheet(
     message: ChatMessage,
+    isSpeakingThis: Boolean = false,
     onDismiss: () -> Unit,
     onCopyMarkdown: () -> Unit,
     onSelectText: () -> Unit,
+    onEditMessage: () -> Unit,
     onReadAloud: () -> Unit,
     onShare: () -> Unit,
     onBranch: () -> Unit,
-    onSaveMessage: () -> Unit
+    onSaveMessage: () -> Unit,
+    onRegenerate: (() -> Unit)? = null,
+    onDeleteMessage: () -> Unit
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isAssistant = message.role == MessageRole.ASSISTANT
 
     // Calculate realistic performance metrics for display
     val charCount = message.content.length
@@ -88,7 +99,7 @@ fun MessageOptionsBottomSheet(
                 modifier = Modifier.padding(vertical = 12.dp)
             )
 
-            // Actions list (Screenshot 3)
+            // Actions list
             MessageOptionRow(
                 icon = Icons.Default.Code,
                 title = "Copy as Markdown",
@@ -100,7 +111,7 @@ fun MessageOptionsBottomSheet(
 
             MessageOptionRow(
                 icon = Icons.Default.FormatListBulleted,
-                title = "Select",
+                title = "Select Text",
                 onClick = {
                     onDismiss()
                     onSelectText()
@@ -108,8 +119,18 @@ fun MessageOptionsBottomSheet(
             )
 
             MessageOptionRow(
-                icon = Icons.AutoMirrored.Filled.VolumeUp,
-                title = "Read Aloud",
+                icon = Icons.Default.Edit,
+                title = "Edit message",
+                onClick = {
+                    onDismiss()
+                    onEditMessage()
+                }
+            )
+
+            MessageOptionRow(
+                icon = if (isSpeakingThis) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                title = if (isSpeakingThis) "Stop audio" else "Read Aloud",
+                iconTint = if (isSpeakingThis) MaterialTheme.colorScheme.primary else null,
                 onClick = {
                     onDismiss()
                     onReadAloud()
@@ -136,10 +157,32 @@ fun MessageOptionsBottomSheet(
 
             MessageOptionRow(
                 icon = Icons.Default.BookmarkBorder,
-                title = "Save message",
+                title = "Save message to bookmarks",
                 onClick = {
                     onDismiss()
                     onSaveMessage()
+                }
+            )
+
+            if (isAssistant && onRegenerate != null) {
+                MessageOptionRow(
+                    icon = Icons.Default.Refresh,
+                    title = "Regenerate response",
+                    onClick = {
+                        onDismiss()
+                        onRegenerate()
+                    }
+                )
+            }
+
+            MessageOptionRow(
+                icon = Icons.Default.DeleteOutline,
+                title = "Delete message",
+                textColor = MaterialTheme.colorScheme.error,
+                iconTint = MaterialTheme.colorScheme.error,
+                onClick = {
+                    onDismiss()
+                    onDeleteMessage()
                 }
             )
 
@@ -147,7 +190,7 @@ fun MessageOptionsBottomSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Statistics Grid (Screenshot 3: 2x2 grid of metrics)
+            // Statistics Grid
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -189,6 +232,8 @@ fun MessageOptionsBottomSheet(
 private fun MessageOptionRow(
     icon: ImageVector,
     title: String,
+    textColor: Color? = null,
+    iconTint: Color? = null,
     onClick: () -> Unit
 ) {
     Row(
@@ -196,13 +241,13 @@ private fun MessageOptionRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = title,
-            tint = MaterialTheme.colorScheme.onSurface,
+            tint = iconTint ?: MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.size(20.dp)
         )
         Spacer(modifier = Modifier.width(16.dp))
@@ -211,7 +256,7 @@ private fun MessageOptionRow(
             style = MaterialTheme.typography.bodyMedium.copy(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface
+                color = textColor ?: MaterialTheme.colorScheme.onSurface
             )
         )
     }

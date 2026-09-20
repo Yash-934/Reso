@@ -3,6 +3,8 @@ package com.example.ui.server
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -17,6 +19,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -39,13 +43,16 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -76,8 +83,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.server.NetworkAddressInfo
 import com.example.server.ServerLogEntry
 import com.example.ui.chat.ChatViewModel
 import com.example.ui.theme.CodeBlockBorder
@@ -86,7 +95,7 @@ import com.example.ui.theme.ErrorRed
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.WarningAmber
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun LocalApiServerScreen(
     viewModel: ChatViewModel,
@@ -101,9 +110,13 @@ fun LocalApiServerScreen(
     val totalRequests by viewModel.localApiServer.totalRequests.collectAsState()
     val selectedModel by viewModel.selectedModel.collectAsState()
     val activeServer by viewModel.activeServer.collectAsState()
+    val offlineModels by viewModel.offlineModels.collectAsState()
 
-    val deviceIp = remember(isRunning) { viewModel.localApiServer.getDeviceIp() }
-    val baseUrl = remember(deviceIp, port) { "http://$deviceIp:$port/v1" }
+    val availableIps = remember(isRunning) { viewModel.localApiServer.getAvailableIpAddresses() }
+    val defaultDeviceIp = remember(availableIps) { viewModel.localApiServer.getDeviceIp() }
+    var selectedIp by remember(defaultDeviceIp) { mutableStateOf(defaultDeviceIp) }
+
+    val baseUrl = remember(selectedIp, port) { "http://$selectedIp:$port/v1" }
 
     var selectedSnippetTab by remember { mutableIntStateOf(0) }
     var portInput by remember(port) { mutableStateOf(port.toString()) }
@@ -123,6 +136,15 @@ fun LocalApiServerScreen(
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
         Toast.makeText(context, "Copied $label", Toast.LENGTH_SHORT).show()
+    }
+
+    fun openInBrowser(url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Could not open browser: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     Scaffold(
@@ -220,7 +242,10 @@ fun LocalApiServerScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         // Routing info
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             Icon(
                                 Icons.Default.Dns,
                                 contentDescription = null,
@@ -234,19 +259,106 @@ fun LocalApiServerScreen(
                             )
                             Text(
                                 text = selectedModel,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
                         Spacer(modifier = Modifier.height(4.dp))
 
+                        val isOfflineSelected = selectedModel.startsWith("offline:") || offlineModels.any { it.id == selectedModel }
                         Text(
-                            text = "Upstream LLM host: ${activeServer?.name ?: "Local Ollama"} (${activeServer?.displayAddress ?: "10.0.2.2:11434"})",
+                            text = if (isOfflineSelected) {
+                                "Engine: On-Device LiteRT-LM (Runs offline on phone's NPU/GPU/CPU)"
+                            } else {
+                                "Upstream LLM host: ${activeServer?.name ?: "Local Ollama"} (${activeServer?.displayAddress ?: "10.0.2.2:11434"})"
+                            },
                             style = MaterialTheme.typography.labelSmall.copy(
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
                                 fontSize = 11.sp
                             )
                         )
+
+                        if (isRunning) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            OutlinedButton(
+                                onClick = { openInBrowser("http://$selectedIp:$port/") },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Open Interactive Web Playground", fontSize = 12.5.sp)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Available Network Interfaces (Wi-Fi, Hotspot, Localhost)
+            item {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "NETWORK INTERFACES (IP ADDRESS)",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 11.sp
+                                )
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Select the IP of this device to connect other phones/PCs on the same network:",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.5.sp
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            availableIps.forEach { netInfo ->
+                                val isSelected = selectedIp == netInfo.ip
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { selectedIp = netInfo.ip },
+                                    label = {
+                                        Text(
+                                            text = "${netInfo.label}: ${netInfo.ip}",
+                                            fontSize = 11.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                        )
+                                    },
+                                    leadingIcon = if (isSelected) {
+                                        { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp)) }
+                                    } else null,
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -295,7 +407,9 @@ fun LocalApiServerScreen(
                                     fontSize = 13.sp,
                                     color = androidx.compose.ui.graphics.Color(0xFFE2E8F0)
                                 ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             IconButton(
                                 onClick = { copyToClipboard("Base URL", baseUrl) },
@@ -335,7 +449,9 @@ fun LocalApiServerScreen(
                                     fontSize = 12.5.sp,
                                     color = androidx.compose.ui.graphics.Color(0xFFE2E8F0)
                                 ),
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                             Row {
                                 IconButton(
@@ -493,12 +609,14 @@ console.log(response.choices[0].message.content);
 OpenAI Compatible Endpoints:
 • GET  $baseUrl/models
 • POST $baseUrl/chat/completions (streaming & non-streaming)
+• GET  $baseUrl/status
 
 Ollama Compatible Endpoints:
-• POST http://$deviceIp:$port/api/chat
+• POST http://$selectedIp:$port/api/chat
+• POST http://$selectedIp:$port/api/generate
 
-System Health:
-• GET  http://$deviceIp:$port/status
+Interactive Web UI Dashboard:
+• GET  http://$selectedIp:$port/
                             """.trimIndent()
                         }
 
@@ -594,7 +712,7 @@ System Health:
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (isRunning) "Server is listening. Send a request to see live logs here." else "Start server to listen for API requests.",
+                                text = if (isRunning) "Server is listening. Send a request or click 'Open Interactive Web Playground'." else "Start server to listen for API requests.",
                                 style = MaterialTheme.typography.bodySmall.copy(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 12.sp
@@ -619,7 +737,10 @@ System Health:
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f, fill = false)
+                            ) {
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
@@ -634,30 +755,36 @@ System Health:
                                     )
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Column {
+                                Column(modifier = Modifier.weight(1f, fill = false)) {
                                     Text(
                                         text = log.path,
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Medium,
                                             fontSize = 11.5.sp
-                                        )
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = "From ${log.clientIp} • ${log.formattedTime} • ${log.durationMs}ms",
                                         style = MaterialTheme.typography.labelSmall.copy(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             fontSize = 10.sp
-                                        )
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
+
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(
-                                        if (log.statusCode == 200) SuccessGreen.copy(alpha = 0.2f)
+                                        if (log.statusCode == 200 || log.statusCode == 204) SuccessGreen.copy(alpha = 0.2f)
                                         else ErrorRed.copy(alpha = 0.2f)
                                     )
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -666,7 +793,7 @@ System Health:
                                     text = "${log.statusCode}",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (log.statusCode == 200) SuccessGreen else ErrorRed
+                                    color = if (log.statusCode == 200 || log.statusCode == 204) SuccessGreen else ErrorRed
                                 )
                             }
                         }

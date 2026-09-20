@@ -2,6 +2,7 @@ package com.example.ui.chat.components
 
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -29,8 +30,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
@@ -51,6 +57,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.Persona
 import java.util.Locale
 
 @Composable
@@ -63,7 +70,16 @@ fun ChatInputBar(
     onInputTextChanged: (String) -> Unit,
     selectedModel: String = "Select model",
     onOpenModelPicker: () -> Unit = {},
+    activePersona: Persona? = null,
+    onOpenPersonaPicker: () -> Unit = {},
     onVoiceModeClick: () -> Unit = {},
+    onOpenAttachmentActions: () -> Unit = onOpenSavedPrompts,
+    attachedImageUri: Uri? = null,
+    onRemoveImage: () -> Unit = {},
+    attachedDocumentName: String? = null,
+    onRemoveDocument: () -> Unit = {},
+    isWebSearchEnabled: Boolean = false,
+    isMathToolEnabled: Boolean = false,
     contextPercentage: Int = 44,
     modifier: Modifier = Modifier
 ) {
@@ -100,7 +116,7 @@ fun ChatInputBar(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
-            // Horizontal prompt suggestions row (Screenshot 1)
+            // Horizontal prompt suggestions row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -135,7 +151,7 @@ fun ChatInputBar(
                 }
             }
 
-            // Expanded Pill Input Card (Screenshot 1)
+            // Expanded Pill Input Card
             Surface(
                 shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -152,7 +168,101 @@ fun ChatInputBar(
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
-                    // Top Row: Text field + Context Ring Percentage (Screenshot 1)
+                    // Active Attachments & Tools Chips Row
+                    if (attachedImageUri != null || attachedDocumentName != null || isWebSearchEnabled || isMathToolEnabled) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (attachedImageUri != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF38BDF8).copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF38BDF8).copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Image, contentDescription = null, tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Image attached", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = Color(0xFF38BDF8)))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            tint = Color(0xFF38BDF8),
+                                            modifier = Modifier.size(14.dp).clickable(onClick = onRemoveImage)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (attachedDocumentName != null) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFFA855F7).copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFA855F7).copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFFA855F7), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(attachedDocumentName.take(16), style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = Color(0xFFA855F7)))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            tint = Color(0xFFA855F7),
+                                            modifier = Modifier.size(14.dp).clickable(onClick = onRemoveDocument)
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (isWebSearchEnabled) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF3B82F6).copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Language, contentDescription = null, tint = Color(0xFF3B82F6), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Web Search ON", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = Color(0xFF3B82F6)))
+                                    }
+                                }
+                            }
+
+                            if (isMathToolEnabled) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = Color(0xFF10B981).copy(alpha = 0.15f),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Calculate, contentDescription = null, tint = Color(0xFF10B981), modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Math Tool ON", style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp, color = Color(0xFF10B981)))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Top Row: Text field + Context Ring Percentage
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.Top
@@ -187,7 +297,7 @@ fun ChatInputBar(
                             )
                         }
 
-                        // Context Ring & Percentage (Screenshot 1: ⭕ 44%)
+                        // Context Ring & Percentage
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(top = 2.dp)
@@ -221,70 +331,130 @@ fun ChatInputBar(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Bottom Row: + | Select model ⌵ | Mic | Waveform | Send (Screenshot 1)
+                    // Bottom Row: + | Model ⌵ | Persona ⌵ | Mic | Waveform | Send
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Left group: + and Select model ⌵
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // + Quick Actions / Saved Prompts button
+                        // Left group: + , Model ⌵ , Persona ⌵
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f, fill = false)
+                        ) {
+                            // + Quick Actions & Attachment Menu
                             Box(
                                 modifier = Modifier
-                                    .size(34.dp)
+                                    .size(32.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
-                                    .clickable(onClick = onOpenSavedPrompts),
+                                    .clickable(onClick = onOpenAttachmentActions)
+                                    .testTag("chat_input_add_prompt_button"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Add,
-                                    contentDescription = "Attach / Prompts",
+                                    contentDescription = "Attach / Tools",
                                     tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
 
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
 
                             // "Select model ⌵" pill button
+                            val isOfflineModel = selectedModel.startsWith("offline:")
+                            val displayModel = when {
+                                selectedModel.isBlank() || selectedModel == "Select model" -> "Model"
+                                isOfflineModel -> {
+                                    val raw = selectedModel.removePrefix("offline:")
+                                    when {
+                                        raw.contains("gemma3", ignoreCase = true) -> "Gemma 3"
+                                        raw.contains("deepseek", ignoreCase = true) -> "DeepSeek"
+                                        raw.contains("qwen", ignoreCase = true) -> "Qwen"
+                                        raw.contains("tiny", ignoreCase = true) -> "TinyGarden"
+                                        else -> raw.take(10)
+                                    }
+                                }
+                                else -> selectedModel.substringBefore(":").take(10)
+                            }
+
                             Surface(
-                                shape = RoundedCornerShape(18.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                color = if (isOfflineModel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isOfflineModel) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
+                                ),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(onClick = onOpenModelPicker)
+                                    .testTag("chat_input_model_picker_button")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = displayModel,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isOfflineModel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.KeyboardArrowDown,
+                                        contentDescription = "Change model",
+                                        tint = if (isOfflineModel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // "Select persona ⌵" pill button
+                            Surface(
+                                shape = RoundedCornerShape(16.dp),
                                 color = MaterialTheme.colorScheme.surface,
                                 border = androidx.compose.foundation.BorderStroke(
                                     1.dp,
                                     MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
                                 ),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .clickable(onClick = onOpenModelPicker)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable(onClick = onOpenPersonaPicker)
+                                    .testTag("chat_input_persona_picker_button")
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val displayModel = if (selectedModel.isNotBlank()) {
-                                        selectedModel.substringBefore(":").take(16)
-                                    } else {
-                                        "Select model"
-                                    }
                                     Text(
-                                        text = displayModel,
+                                        text = activePersona?.emoji ?: "🎭",
+                                        fontSize = 12.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = activePersona?.name?.take(8) ?: "Persona",
                                         style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 12.sp,
+                                            fontSize = 11.5.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = MaterialTheme.colorScheme.onSurface
                                         ),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
                                     Icon(
                                         imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Change model",
+                                        contentDescription = "Change persona",
                                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(15.dp)
+                                        modifier = Modifier.size(14.dp)
                                     )
                                 }
                             }
@@ -329,7 +499,7 @@ fun ChatInputBar(
 
                             Spacer(modifier = Modifier.width(8.dp))
 
-                            // Waveform voice mode button
+                            // Waveform interactive voice mode button
                             Box(
                                 modifier = Modifier
                                     .size(34.dp)
@@ -349,7 +519,7 @@ fun ChatInputBar(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             // Send (Upward Arrow) or Stop Button
-                            val canSend = inputTextState.isNotBlank() || isStreaming
+                            val canSend = inputTextState.isNotBlank() || isStreaming || attachedImageUri != null || attachedDocumentName != null
                             Box(
                                 modifier = Modifier
                                     .size(36.dp)
@@ -364,7 +534,7 @@ fun ChatInputBar(
                                     .clickable(enabled = canSend) {
                                         if (isStreaming) {
                                             onStopStreaming()
-                                        } else if (inputTextState.isNotBlank()) {
+                                        } else if (canSend) {
                                             val textToSend = inputTextState.trim()
                                             onInputTextChanged("")
                                             onSendMessage(textToSend)
