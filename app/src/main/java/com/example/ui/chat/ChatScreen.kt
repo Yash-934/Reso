@@ -28,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -161,59 +162,66 @@ fun ChatScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = true,
         drawerContent = {
-            SidebarDrawer(
-                conversations = conversations,
-                currentConversationId = currentConversation?.id,
-                activeServer = activeServer,
-                isTemporary = isTemporary,
-                isDarkTheme = isDarkTheme,
-                onSelectConversation = { conv ->
-                    viewModel.selectConversation(conv)
-                    scope.launch { drawerState.close() }
-                },
-                onNewChat = {
-                    viewModel.startNewChat()
-                    scope.launch { drawerState.close() }
-                },
-                onToggleTemporary = { isTemp ->
-                    viewModel.setTemporaryChat(isTemp)
-                    scope.launch { drawerState.close() }
-                },
-                onDeleteConversation = { id ->
-                    viewModel.deleteConversation(id)
-                },
-                onTogglePin = { id, isPinned ->
-                    viewModel.togglePinConversation(id, isPinned)
-                },
-                onOpenServers = {
-                    scope.launch { drawerState.close() }
-                    onNavigateToServers()
-                },
-                onOpenLocalServer = {
-                    scope.launch { drawerState.close() }
-                    onNavigateToLocalServer()
-                },
-                onOpenOfflineModels = {
-                    scope.launch { drawerState.close() }
-                    onNavigateToOfflineModels()
-                },
-                onOpenPersonas = {
-                    scope.launch { drawerState.close() }
-                    onNavigateToPersonas()
-                },
-                onOpenSavedPrompts = {
-                    scope.launch { drawerState.close() }
-                    showPromptsSheet = true
-                },
-                onOpenSettings = {
-                    scope.launch { drawerState.close() }
-                    onNavigateToSettings()
-                },
-                onToggleTheme = {
-                    viewModel.toggleTheme()
-                }
-            )
+            ModalDrawerSheet(
+                drawerContainerColor = MaterialTheme.colorScheme.surface,
+                drawerShape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp),
+                modifier = Modifier.width(310.dp)
+            ) {
+                SidebarDrawer(
+                    conversations = conversations,
+                    currentConversationId = currentConversation?.id,
+                    activeServer = activeServer,
+                    isTemporary = isTemporary,
+                    isDarkTheme = isDarkTheme,
+                    onSelectConversation = { conv ->
+                        viewModel.selectConversation(conv)
+                        scope.launch { drawerState.close() }
+                    },
+                    onNewChat = {
+                        viewModel.startNewChat()
+                        scope.launch { drawerState.close() }
+                    },
+                    onToggleTemporary = { isTemp ->
+                        viewModel.setTemporaryChat(isTemp)
+                        scope.launch { drawerState.close() }
+                    },
+                    onDeleteConversation = { id ->
+                        viewModel.deleteConversation(id)
+                    },
+                    onTogglePin = { id, isPinned ->
+                        viewModel.togglePinConversation(id, isPinned)
+                    },
+                    onOpenServers = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToServers()
+                    },
+                    onOpenLocalServer = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToLocalServer()
+                    },
+                    onOpenOfflineModels = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToOfflineModels()
+                    },
+                    onOpenPersonas = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToPersonas()
+                    },
+                    onOpenSavedPrompts = {
+                        scope.launch { drawerState.close() }
+                        showPromptsSheet = true
+                    },
+                    onOpenSettings = {
+                        scope.launch { drawerState.close() }
+                        onNavigateToSettings()
+                    },
+                    onToggleTheme = {
+                        viewModel.toggleTheme()
+                    }
+                )
+            }
         }
     ) {
         Scaffold(
@@ -225,7 +233,9 @@ fun ChatScreen(
                     activePersona = activePersona,
                     isTemporary = isTemporary,
                     onMenuClick = {
-                        scope.launch { drawerState.open() }
+                        scope.launch {
+                            if (drawerState.isClosed) drawerState.open() else drawerState.close()
+                        }
                     },
                     onModelClick = { showModelSheet = true },
                     onPersonaClick = { showPersonaSheet = true },

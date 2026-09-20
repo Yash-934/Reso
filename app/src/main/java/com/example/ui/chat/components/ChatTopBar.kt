@@ -237,84 +237,27 @@ fun ChatTopBar(
 
                     Spacer(modifier = Modifier.width(6.dp))
 
-                    // Incognito Chat button with glasses (chashme wala icon)
-                    if (isTemporary) {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(WarningAmber.copy(alpha = 0.22f))
-                                .border(1.dp, WarningAmber.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                                .clickable(onClick = onToggleIncognito)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                                .testTag("incognito_chat_active_chip"),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_incognito_glasses),
-                                contentDescription = "Incognito Mode Active - Tap to disable",
-                                tint = WarningAmber,
-                                modifier = Modifier.size(16.dp)
+                    // Incognito Chat button with glasses (chashme wala icon) - sleek icon button
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(if (isTemporary) WarningAmber.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f))
+                            .border(
+                                width = if (isTemporary) 1.5.dp else 0.dp,
+                                color = if (isTemporary) WarningAmber else Color.Transparent,
+                                shape = CircleShape
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Incognito",
-                                color = WarningAmber,
-                                fontSize = 11.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable(onClick = onToggleIncognito)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                                .testTag("incognito_chat_top_button"),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_incognito_glasses),
-                                contentDescription = "Start Incognito Chat",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "Incognito",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            )
-                        }
-                    }
-
-                    // Persona badge if active
-                    activePersona?.let { persona ->
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                                .clickable(onClick = onPersonaClick)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
-                                .testTag("persona_badge_chip"),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(text = persona.emoji, fontSize = 12.sp)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = persona.name,
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                            .clickable(onClick = onToggleIncognito)
+                            .testTag("incognito_chat_top_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_incognito_glasses),
+                            contentDescription = if (isTemporary) "Incognito Mode Active - Tap to disable" else "Start Incognito Chat",
+                            tint = if (isTemporary) WarningAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(19.dp)
+                        )
                     }
                 }
             },

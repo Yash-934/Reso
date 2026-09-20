@@ -337,7 +337,7 @@ fun ChatInputBar(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        // Left group: + , Model ⌵ , Persona ⌵
+                        // Left group: + (Tools/Attach) and Persona ⌵
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.weight(1f, fill = false)
@@ -360,62 +360,7 @@ fun ChatInputBar(
                                 )
                             }
 
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // "Select model ⌵" pill button
-                            val isOfflineModel = selectedModel.startsWith("offline:")
-                            val displayModel = when {
-                                selectedModel.isBlank() || selectedModel == "Select model" -> "Model"
-                                isOfflineModel -> {
-                                    val raw = selectedModel.removePrefix("offline:")
-                                    when {
-                                        raw.contains("gemma3", ignoreCase = true) -> "Gemma 3"
-                                        raw.contains("deepseek", ignoreCase = true) -> "DeepSeek"
-                                        raw.contains("qwen", ignoreCase = true) -> "Qwen"
-                                        raw.contains("tiny", ignoreCase = true) -> "TinyGarden"
-                                        else -> raw.take(10)
-                                    }
-                                }
-                                else -> selectedModel.substringBefore(":").take(10)
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(16.dp),
-                                color = if (isOfflineModel) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (isOfflineModel) MaterialTheme.colorScheme.primary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.25f)
-                                ),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .clickable(onClick = onOpenModelPicker)
-                                    .testTag("chat_input_model_picker_button")
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = displayModel,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontSize = 11.5.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = if (isOfflineModel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Icon(
-                                        imageVector = Icons.Default.KeyboardArrowDown,
-                                        contentDescription = "Change model",
-                                        tint = if (isOfflineModel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             // "Select persona ⌵" pill button
                             Surface(
