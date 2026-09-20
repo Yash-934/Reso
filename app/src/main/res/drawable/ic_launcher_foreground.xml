@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Center is 54, 54. Safe area is radius ~30 (24..84) -->
+
+    <!-- Outer Soft Glow -->
+    <path
+        android:pathData="M54,32 C66.15,32 76,41.85 76,54 C76,66.15 66.15,76 54,76 C41.85,76 32,66.15 32,54 C32,41.85 41.85,32 54,32 Z"
+        android:fillColor="#30D97757" />
+
+    <!-- Top Primary Beam -->
+    <path
+        android:pathData="M54,26 C57,26 58,35 58,45 C58,48 56.5,50 54,50 C51.5,50 50,48 50,45 C50,35 51,26 54,26 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="26"
+                android:endX="54"
+                android:endY="50"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#D97757" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Bottom Primary Beam -->
+    <path
+        android:pathData="M54,82 C51,82 50,73 50,63 C50,60 51.5,58 54,58 C56.5,58 58,60 58,63 C58,73 57,82 54,82 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="54"
+                android:startY="82"
+                android:endX="54"
+                android:endY="58"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#D97757" />
+                <item android:offset="1.0" android:color="#E89578" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Left Primary Beam -->
+    <path
+        android:pathData="M26,54 C26,51 35,50 45,50 C48,50 50,51.5 50,54 C50,56.5 48,58 45,58 C35,58 26,57 26,54 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="26"
+                android:startY="54"
+                android:endX="50"
+                android:endY="54"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#E89578" />
+                <item android:offset="1.0" android:color="#D97757" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Right Primary Beam -->
+    <path
+        android:pathData="M82,54 C82,57 73,58 63,58 C60,58 58,56.5 58,54 C58,51.5 60,50 63,50 C73,50 82,51 82,54 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="82"
+                android:startY="54"
+                android:endX="58"
+                android:endY="54"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#F59E0B" />
+                <item android:offset="1.0" android:color="#D97757" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Top-Right Diagonal Spark -->
+    <path
+        android:pathData="M73,35 C74.5,36.5 68,44 61,47 C59,48 57.5,46.5 58.5,44.5 C61.5,37.5 69,31 73,35 Z"
+        android:fillColor="#F59E0B" />
+
+    <!-- Bottom-Left Diagonal Spark -->
+    <path
+        android:pathData="M35,73 C33.5,71.5 40,64 47,61 C49,60 50.5,61.5 49.5,63.5 C46.5,70.5 39,77 35,73 Z"
+        android:fillColor="#D97757" />
+
+    <!-- Top-Left Diagonal Spark -->
+    <path
+        android:pathData="M35,35 C36.5,33.5 44,40 47,47 C48,49 46.5,50.5 44.5,49.5 C37.5,46.5 31,39 35,35 Z"
+        android:fillColor="#E89578" />
+
+    <!-- Bottom-Right Diagonal Spark -->
+    <path
+        android:pathData="M73,73 C71.5,74.5 64,68 61,61 C60,49 61.5,47.5 63.5,48.5 C70.5,51.5 77,59 73,73 Z"
+        android:fillColor="#D97757" />
+
+    <!-- Central Neural Resonance Core Ring -->
+    <path
+        android:pathData="M54,42 C60.63,42 66,47.37 66,54 C66,60.63 60.63,66 54,66 C47.37,66 42,60.63 42,54 C42,47.37 47.37,42 54,42 Z"
+        android:fillColor="#D97757" />
+
+    <!-- Inner Core Golden Spark -->
+    <path
+        android:pathData="M54,47 C57.87,47 61,50.13 61,54 C61,57.87 57.87,61 54,61 C50.13,61 47,57.87 47,54 C47,50.13 50.13,47 54,47 Z"
+        android:fillColor="#FAF9F5" />
+    <path
+        android:pathData="M54,50 C56.2,50 58,51.8 58,54 C58,56.2 56.2,58 54,58 C51.8,58 50,56.2 50,54 C50,51.8 51.8,50 54,50 Z"
+        android:fillColor="#D97757" />
+
+</vector>

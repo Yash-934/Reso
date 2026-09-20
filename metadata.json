@@ -1,0 +1,6 @@
+{
+  "name": "Reso",
+  "description": "Private, fast, and modern AI chat interface with 100% on-device offline models (Google AI Edge LiteRT, NPU/GPU accelerated), local LLM servers (Ollama, LM Studio), and OpenAI-compatible APIs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
